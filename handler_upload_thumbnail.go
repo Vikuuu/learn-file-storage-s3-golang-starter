@@ -1,10 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -37,34 +39,58 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	// Parse Form data
 	const maxMemory = 10 << 20
-	r.ParseMultipartForm(maxMemory)
+	err = r.ParseMultipartForm(maxMemory)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Max Memory", err)
+		return
+	}
 	// Get the image data
 	formData, formHeader, err := r.FormFile("thumbnail")
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Get Image Data", err)
 		return
 	}
+	defer formData.Close()
+	contentType := formHeader.Header.Get("Content-Type")
 	// Read all the image data
-	imgData, err := io.ReadAll(formData)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Image Data Read", err)
-		return
-	}
+	// imgData, err := io.ReadAll(formData)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusInternalServerError, "Image Data Read", err)
+	// 	return
+	// }
 	// Get video's metadata
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Get Video Metadata", err)
 		return
 	}
-	thumb := thumbnail{
-		data:      imgData,
-		mediaType: formHeader.Header.Get("Content-Type"),
+	// thumb := thumbnail{
+	//     data: imgData,
+	// 	mediaType: contentType,
+	// }
+	// videoThumbnails[video.ID] = thumb
+	fileExt := strings.Split(contentType, "/")
+	videoFile := fmt.Sprintf("%s.%s", videoID, fileExt[1])
+	videoFilePath := filepath.Join(cfg.assetsRoot, videoFile)
+	vFile, err := os.Create(videoFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Create File", err)
+		return
 	}
-	videoThumbnails[video.ID] = thumb
-	encode_url := base64.StdEncoding.EncodeToString(imgData)
-	data_url := fmt.Sprintf("data:%s;base64,%s", formHeader.Header.Get("Content-Type"), encode_url)
-	// url := fmt.Sprintf("/api/thumbnail/%s", video.ID)
-	video.ThumbnailURL = &data_url
+	defer vFile.Close()
+	url := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, videoFile)
+
+	_, err = io.Copy(vFile, formData)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Copy File", err)
+		return
+	}
+	err = vFile.Sync()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Sync File", err)
+		return
+	}
+	video.ThumbnailURL = &url
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Updating Video", err)
