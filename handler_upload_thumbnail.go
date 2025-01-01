@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -59,6 +60,15 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	// 	return
 	// }
 	// Get video's metadata
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "MIME Type", err)
+		return
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusNotAcceptable, "Not supported format", err)
+		return
+	}
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Get Video Metadata", err)
