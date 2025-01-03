@@ -80,6 +80,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// get the temp file aspect ratio
+	tempAR, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error getting aspect ratio", err)
+		return
+	}
+
 	// File pointer to the beginning after Copy left
 	// it to last
 	tempFile.Seek(0, io.SeekStart)
@@ -90,7 +97,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Error creating 32 bytes", err)
 		return
 	}
-	s3Key := base64.URLEncoding.EncodeToString(bytes)
+	s3Key := tempAR + "/" + base64.URLEncoding.EncodeToString(bytes)
 
 	putObjectInput := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
