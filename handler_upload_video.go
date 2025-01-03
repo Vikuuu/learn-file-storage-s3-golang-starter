@@ -98,11 +98,22 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s3Key := tempAR + "/" + base64.URLEncoding.EncodeToString(bytes)
+	processedVideoPath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error pre-processing video", err)
+		return
+	}
+	processedVid, err := os.Open(processedVideoPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error opening pre-processed file", err)
+		return
+	}
+	defer processedVid.Close()
 
 	putObjectInput := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &s3Key,
-		Body:        tempFile,
+		Body:        processedVid,
 		ContentType: &mediaType,
 	}
 	cfg.s3Client.PutObject(context.Background(), &putObjectInput)
